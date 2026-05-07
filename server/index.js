@@ -19,7 +19,8 @@ const otpByPhone = new Map();
 const userByToken = new Map();
 
 function randomOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000));
+  // return String(Math.floor(100000 + Math.random() * 900000));
+  return '123456';
 }
 
 function makeToken() {

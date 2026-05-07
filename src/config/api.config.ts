@@ -9,7 +9,7 @@
  */
 const raw =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_BASE_URL) ||
-  'http://192.168.1.9:4000/api';
+  'https://iro-app-react-native.onrender.com/api';
 
 export const API_BASE_URL = raw.replace(/\/$/, '');
 export const SOCKET_URL = API_BASE_URL.replace(/\/api\/?$/, '');
