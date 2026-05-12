@@ -1,3 +1,4 @@
+import { fetchReferralTree, type ReferralTreeNode } from '@/src/api/auth.api';
 import { Button } from '@/src/components/ui/Button';
 import { ProgressBar } from '@/src/components/ui/ProgressBar';
 import { SectionHeader } from '@/src/components/ui/SectionHeader';
@@ -5,10 +6,14 @@ import { useAppSelector } from '@/src/store';
 import { Colors } from '@/src/theme/colors';
 import { Radius, Spacing } from '@/src/theme/spacing';
 import { FontFamily, FontSize } from '@/src/theme/typography';
+import type { UserProfile, UserRole } from '@/src/types/user.types';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { useCallback, useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Pressable,
@@ -26,119 +31,21 @@ const JOIN_BASE = 'https://iro.in/join?ref=';
 
 const { width: windowWidth } = Dimensions.get('window');
 
-type TreeNodeType = {
-  id: string;
-  name: string;
-  role: string;
-  children?: TreeNodeType[];
-};
+type TreeNodeType = ReferralTreeNode;
 
-const networkData: TreeNodeType = {
-  id: 'head',
-  name: 'Head',
-  role: 'L1',
-  children: [
-    {
-      id: 'p1',
-      name: 'P1',
-      role: 'L2',
-      children: [
-        {
-          id: 'p1-1',
-          name: 'P1.1',
-          role: 'L3',
-          children: [
-            {
-              id: 'p1-1-1',
-              name: 'P1.1.1',
-              role: 'L4',
-            },
-            {
-              id: 'p1-1-2',
-              name: 'P1.1.2',
-              role: 'L4',
-            },
-          ],
-        },
-        {
-          id: 'p1-2',
-          name: 'P1.2',
-          role: 'L3',
-        },
-        {
-          id: 'p1-3',
-          name: 'P1.3',
-          role: 'L3',
-        },
-      ],
-    },
-
-    {
-      id: 'p2',
-      name: 'P2',
-      role: 'L2',
-      children: [
-        {
-          id: 'p2-1',
-          name: 'P2.1',
-          role: 'L3',
-        },
-        {
-          id: 'p2-2',
-          name: 'P2.2',
-          role: 'L3',
-          children: [
-            {
-              id: 'p2-2-1',
-              name: 'P2.2.1',
-              role: 'L4',
-            },
-          ],
-        },
-        {
-          id: 'p2-3',
-          name: 'P2.3',
-          role: 'L3',
-        },
-      ],
-    },
-
-    {
-      id: 'p3',
-      name: 'P3',
-      role: 'L2',
-      children: [
-        {
-          id: 'p3-1',
-          name: 'P3.1',
-          role: 'L3',
-        },
-        {
-          id: 'p3-2',
-          name: 'P3.2',
-          role: 'L3',
-        },
-        {
-          id: 'p3-3',
-          name: 'P3.3',
-          role: 'L3',
-          children: [
-            {
-              id: 'p3-3-1',
-              name: 'P3.3.1',
-              role: 'L4',
-            },
-            {
-              id: 'p3-3-2',
-              name: 'P3.3.2',
-              role: 'L4',
-            },
-          ],
-        },
-      ],
-    },
-  ],
-};
+function roleFallbackFromProfile(u: UserProfile | null): string {
+  const map: Record<UserRole, string> = {
+    president: 'L1',
+    national_exec: 'L2',
+    state_leader: 'L3',
+    district_leader: 'L4',
+    block_leader: 'L5',
+    booth_worker: 'L6',
+    reformer: 'L7',
+    volunteer: 'L8',
+  };
+  return map[(u?.role ?? 'reformer') as UserRole] ?? 'L8';
+}
 
 const NODE_WIDTH = 90;
 const LEVEL_HEIGHT = 140;
@@ -237,12 +144,48 @@ function collectVisibleEdges(node: TreeNodeType, expanded: Record<string, boolea
 
 export default function NetworkScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ source?: string | string[] }>();
+  const sourceParam = typeof params.source === 'string' ? params.source : params.source?.[0];
   const user = useAppSelector((s) => s.auth.user);
   const code = user?.reformerId ?? 'IRO-DEMO';
   const link = `${JOIN_BASE}${encodeURIComponent(code)}`;
   const [tab, setTab] = useState<'tree' | 'share'>('tree');
-  const networkCount = user?.networkCount ?? 47;
+  const [treeRoot, setTreeRoot] = useState<TreeNodeType | null>(null);
+  const [treeLoading, setTreeLoading] = useState(true);
+  const [treeError, setTreeError] = useState<string | null>(null);
+  const networkCount = user?.networkCount ?? 0;
   const progress = Math.min(1, networkCount / 100);
+
+  const fallbackTree = useCallback((): TreeNodeType => {
+    return {
+      id: user?.id ?? 'me',
+      name: user?.name ?? 'You',
+      role: roleFallbackFromProfile(user ?? null),
+    };
+  }, [user]);
+
+  const loadTree = useCallback(async () => {
+    setTreeLoading(true);
+    setTreeError(null);
+    try {
+      const { tree } = await fetchReferralTree();
+      setTreeRoot(tree);
+    } catch {
+      setTreeError('Could not load your referral tree.');
+      setTreeRoot(fallbackTree());
+    } finally {
+      setTreeLoading(false);
+    }
+  }, [fallbackTree]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (sourceParam === 'referrals') {
+        setTab('tree');
+      }
+      void loadTree();
+    }, [loadTree, sourceParam])
+  );
 
   const msg = useMemo(
     () =>
@@ -284,14 +227,22 @@ export default function NetworkScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.treeCard}>
-            <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
-              <NetworkTreeCanvas root={networkData} />
-            </ScrollView>
+            {treeLoading && !treeRoot ? (
+              <ActivityIndicator color={Colors.saffron} style={{ padding: Spacing.xxxl }} />
+            ) : treeRoot ? (
+              <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={false}>
+                <NetworkTreeCanvas root={treeRoot} />
+              </ScrollView>
+            ) : null}
           </View>
+
+          {treeError ? (
+            <Text style={[styles.body, { color: Colors.textMuted, marginBottom: Spacing.sm }]}>{treeError}</Text>
+          ) : null}
 
           <SectionHeader title="Your impact" />
           <Text style={styles.body}>
-            You&apos;ve brought <Text style={styles.em}>{user?.directReferrals ?? 12}</Text> Reformers directly.
+            You&apos;ve brought <Text style={styles.em}>{user?.directReferrals ?? 0}</Text> Reformers directly.
           </Text>
           <Text style={styles.body}>
             Your extended network: <Text style={styles.em}>{networkCount}</Text> total
@@ -326,10 +277,14 @@ export default function NetworkScreen() {
 
 function NetworkTreeCanvas({ root }: { root: TreeNodeType }) {
   const layout = useMemo(() => computeNetworkLayout(root), [root]);
-  const allIds = useMemo(() => collectIds(root), [root]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(allIds.map((id) => [id, true] as const)),
+    Object.fromEntries(collectIds(root).map((id) => [id, true] as const)),
   );
+
+  useEffect(() => {
+    const ids = collectIds(root);
+    setExpanded(Object.fromEntries(ids.map((id) => [id, true] as const)));
+  }, [root]);
 
   const edges = useMemo(() => collectVisibleEdges(root, expanded), [root, expanded]);
 

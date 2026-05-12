@@ -144,10 +144,15 @@ export function ProfileScreen() {
       </LinearGradient>
 
       <View style={styles.statsRow}>
-        <View style={styles.stat}>
+        <Pressable
+          style={styles.stat}
+          onPress={() => nav.pushParams('/(tabs)/network', { source: 'referrals' })}
+          accessibilityRole="button"
+          accessibilityLabel="View referral network"
+        >
           <Text style={styles.statNum}>{user?.directReferrals ?? 0}</Text>
           <Text style={styles.statLbl}>Referrals</Text>
-        </View>
+        </Pressable>
         <View style={styles.stat}>
           <Text style={styles.statNum}>{user?.networkCount ?? 0}</Text>
           <Text style={styles.statLbl}>Network</Text>

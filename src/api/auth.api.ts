@@ -34,6 +34,19 @@ export async function fetchMe(): Promise<IroPublicUser> {
   return data;
 }
 
+export type ReferralTreeNode = {
+  id: string;
+  name: string;
+  role: string;
+  children?: ReferralTreeNode[];
+};
+
+/** GET /auth/me/referrals/tree — nested invitees (`referredById`) */
+export async function fetchReferralTree(): Promise<{ tree: ReferralTreeNode }> {
+  const { data } = await apiClient.get<{ tree: ReferralTreeNode }>('/auth/me/referrals/tree');
+  return data;
+}
+
 /** PATCH /auth/me */
 export type UpdateProfileBody = {
   fullName?: string;
