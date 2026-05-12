@@ -1,7 +1,7 @@
 import { requestOtp } from '@/src/api/auth.api';
-import { messageFromUnknownError } from '@/src/lib/apiError';
 import { Button } from '@/src/components/ui/Button';
 import { ProgressDots } from '@/src/components/ui/ProgressDots';
+import { messageFromUnknownError } from '@/src/lib/apiError';
 import { nav } from '@/src/navigation/nav';
 import { Colors, Gradients } from '@/src/theme/colors';
 import { Radius, Spacing } from '@/src/theme/spacing';
@@ -47,7 +47,8 @@ export function PhoneScreen() {
       nav.pushParams('/auth/otp', { phone: phoneE164, mode });
     } catch (e: unknown) {
       Alert.alert('OTP request failed', messageFromUnknownError(e));
-      setError('Unable to send OTP. Check connection and try again.');
+      setError('Unable to send OTP. Check connection and try again.'+messageFromUnknownError(e));
+      // setError('Unable to send OTP. Check connection and try again.');
     } finally {
       setLoading(false);
     }

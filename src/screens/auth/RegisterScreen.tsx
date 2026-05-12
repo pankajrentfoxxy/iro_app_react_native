@@ -57,6 +57,22 @@ function formatDate(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
+/** Latest calendar birth date (local midnight) that is still 18+ as of today. */
+function getLatestAllowedDob(): Date {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(today);
+  d.setFullYear(d.getFullYear() - 18);
+  return d;
+}
+
+function isAtLeast18YearsOld(birth: Date): boolean {
+  const cutoff = getLatestAllowedDob();
+  const b = new Date(birth);
+  b.setHours(0, 0, 0, 0);
+  return b.getTime() <= cutoff.getTime();
+}
+
 export function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
@@ -66,14 +82,14 @@ export function RegisterScreen() {
 
   const [step, setStep] = useState<WizardStep>(0);
   const [name, setName] = useState(reduxUser?.name ?? '');
-  const [dob, setDob] = useState(new Date());
+  const [dob, setDob] = useState<Date | null>(null);
   const [showDob, setShowDob] = useState(false);
-  const [gender, setGender] = useState<'Male' | 'Female' | 'Other'>('Male');
-  const [occupation, setOccupation] = useState<string>(OCCUPATIONS[0]);
-  const [education, setEducation] = useState<string>(EDUCATION[2]);
+  const [gender, setGender] = useState<'' | 'Male' | 'Female' | 'Other'>('');
+  const [occupation, setOccupation] = useState('');
+  const [education, setEducation] = useState('');
 
   const states = useMemo(() => getIndianStates(), []);
-  const [stateName, setStateName] = useState(() => states[0] ?? '');
+  const [stateName, setStateName] = useState('');
 
   const districts = useMemo(() => (stateName ? getDistrictsForState(stateName) : []), [stateName]);
   const [districtName, setDistrictName] = useState('');
@@ -84,16 +100,6 @@ export function RegisterScreen() {
   );
   const [blockName, setBlockName] = useState('');
   const [villageName, setVillageName] = useState('');
-
-  useEffect(() => {
-    const d0 = districts[0] ?? '';
-    setDistrictName((prev) => (prev && districts.includes(prev) ? prev : d0));
-  }, [districts]);
-
-  useEffect(() => {
-    const b0 = blocks[0] ?? '';
-    setBlockName((prev) => (prev && blocks.includes(prev) ? prev : b0));
-  }, [blocks]);
 
   const [pincode, setPincode] = useState('');
 
@@ -113,11 +119,20 @@ export function RegisterScreen() {
   };
 
   const openDobPicker = () => {
+    const latest = getLatestAllowedDob();
+    let fallbackDob: Date;
+    if (!dob) {
+      fallbackDob = new Date(2000, 0, 1);
+    } else if (isAtLeast18YearsOld(dob)) {
+      fallbackDob = dob;
+    } else {
+      fallbackDob = latest;
+    }
     if (Platform.OS === 'android') {
       DateTimePickerAndroid.open({
-        value: dob,
+        value: fallbackDob,
         mode: 'date',
-        maximumDate: new Date(),
+        maximumDate: latest,
         minimumDate: new Date(1920, 0, 1),
         onChange: (event: DateTimePickerEvent, date?: Date) => {
           if (event.type === 'set' && date) setDob(date);
@@ -137,19 +152,46 @@ export function RegisterScreen() {
 
   const progressStep = step === 0 ? 3 : step === 1 ? 4 : 5;
 
+  const personalMissing = (): string[] => {
+    const m: string[] = [];
+    if (!name.trim()) m.push('Full name');
+    if (!dob) m.push('Date of birth');
+    else if (!isAtLeast18YearsOld(dob)) m.push('You must be at least 18 years old');
+    if (!gender) m.push('Gender');
+    if (!occupation.trim()) m.push('Occupation');
+    if (!education.trim()) m.push('Education');
+    return m;
+  };
+
   const nextFromPersonal = () => {
-    if (!name.trim()) return;
+    const missing = personalMissing();
+    if (missing.length) {
+      const body = missing.length > 1 ? `• ${missing.join('\n• ')}` : missing[0];
+      Alert.alert('Please complete', body);
+      return;
+    }
     setStep(1);
   };
 
+  const locationMissing = (): string[] => {
+    const m: string[] = [];
+    if (!stateName.trim()) m.push('State / UT');
+    if (stateName.trim() && districts.length === 0) m.push('No district data for selected state');
+    if (!districtName.trim()) m.push('District');
+    if (stateName.trim() && districtName.trim() && blocks.length === 0) {
+      m.push('No block data for selected district');
+    }
+    if (districtName.trim() && blocks.length > 0 && !blockName.trim()) m.push('Block / Taluka');
+    if (!villageName.trim()) m.push('Village or ward name');
+    if (pincode.replace(/\D/g, '').length !== 6) m.push('6-digit PIN code');
+    return m;
+  };
+
   const nextFromLocation = () => {
-    if (
-      !stateName ||
-      !districtName ||
-      !blockName ||
-      !villageName.trim() ||
-      pincode.replace(/\D/g, '').length !== 6
-    ) {
+    const missing = locationMissing();
+    if (missing.length) {
+      const body = missing.length > 1 ? `• ${missing.join('\n• ')}` : missing[0];
+      Alert.alert('Please complete', body);
       return;
     }
     setStep(2);
@@ -166,6 +208,22 @@ export function RegisterScreen() {
         'Registration',
         'Session expired. Go back and request a new OTP to continue registration.'
       );
+      return;
+    }
+
+    const missPersonal = personalMissing();
+    const missLocation = locationMissing();
+    if (missPersonal.length || missLocation.length) {
+      const parts = [...missPersonal, ...missLocation];
+      Alert.alert('Please complete', parts.length > 1 ? `• ${parts.join('\n• ')}` : parts[0]);
+      return;
+    }
+    if (!gender || !dob) {
+      Alert.alert('Registration', 'Please complete all required fields.');
+      return;
+    }
+    if (!isAtLeast18YearsOld(dob)) {
+      Alert.alert('Registration', 'You must be at least 18 years old to register.');
       return;
     }
 
@@ -267,11 +325,21 @@ export function RegisterScreen() {
   const onPick = (value: string) => {
     if (picker === 'occupation') setOccupation(value);
     if (picker === 'education') setEducation(value);
-    if (picker === 'state') setStateName(value);
-    if (picker === 'district') setDistrictName(value);
+    if (picker === 'state') {
+      setStateName(value);
+      setDistrictName('');
+      setBlockName('');
+    }
+    if (picker === 'district') {
+      setDistrictName(value);
+      setBlockName('');
+    }
     if (picker === 'block') setBlockName(value);
     setPicker(null);
   };
+
+  const personalComplete = personalMissing().length === 0;
+  const locationComplete = locationMissing().length === 0;
 
   if (celebrate) {
     return (
@@ -307,20 +375,24 @@ export function RegisterScreen() {
             </Card>
 
             <Card style={styles.fieldCard}>
-              <Text style={styles.label}>Date of Birth *</Text>
+              <Text style={styles.label}>Date of Birth * (18+)</Text>
               {Platform.OS === 'web' ? (
                 <View style={styles.dateRow}>
                   {createElement('input', {
                     type: 'date',
-                    value: formatDate(dob),
-                    max: formatDate(new Date()),
+                    value: dob ? formatDate(dob) : '',
+                    max: formatDate(getLatestAllowedDob()),
                     min: formatDate(new Date(1920, 0, 1)),
                     onChange: (e: { target: { value: string } }) => {
                       const v = e.target.value;
-                      if (!v) return;
+                      if (!v) {
+                        setDob(null);
+                        return;
+                      }
                       const [y, m, d] = v.split('-').map((x) => parseInt(x, 10));
                       if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
-                        setDob(new Date(y, m - 1, d));
+                        const next = new Date(y, m - 1, d);
+                        setDob(next);
                       }
                     },
                     style: {
@@ -338,9 +410,14 @@ export function RegisterScreen() {
                 </View>
               ) : (
                 <Pressable onPress={openDobPicker} style={styles.dateRow}>
-                  <Text style={styles.dateTxt}>{formatDate(dob)}</Text>
+                  <Text style={[styles.dateTxt, !dob && styles.selectPlaceholder]}>
+                    {dob ? formatDate(dob) : 'Select date of birth'}
+                  </Text>
                 </Pressable>
               )}
+              {dob && !isAtLeast18YearsOld(dob) ? (
+                <Text style={styles.fieldError}>You must be at least 18 years old to continue.</Text>
+              ) : null}
             </Card>
 
             <Card style={styles.fieldCard}>
@@ -359,22 +436,26 @@ export function RegisterScreen() {
             </Card>
 
             <Card style={styles.fieldCard}>
-              <Text style={styles.label}>Occupation</Text>
+              <Text style={styles.label}>Occupation *</Text>
               <Pressable onPress={() => openPicker('occupation')} style={styles.selectRow}>
-                <Text style={styles.selectVal}>{occupation}</Text>
+                <Text style={[styles.selectVal, !occupation && styles.selectPlaceholder]}>
+                  {occupation || 'Select occupation'}
+                </Text>
                 <Text style={styles.chev}>›</Text>
               </Pressable>
             </Card>
 
             <Card style={styles.fieldCard}>
-              <Text style={styles.label}>Education</Text>
+              <Text style={styles.label}>Education *</Text>
               <Pressable onPress={() => openPicker('education')} style={styles.selectRow}>
-                <Text style={styles.selectVal}>{education}</Text>
+                <Text style={[styles.selectVal, !education && styles.selectPlaceholder]}>
+                  {education || 'Select education'}
+                </Text>
                 <Text style={styles.chev}>›</Text>
               </Pressable>
             </Card>
 
-            <Button title="NEXT →" onPress={nextFromPersonal} disabled={!name.trim()} />
+            <Button title="NEXT →" onPress={nextFromPersonal} disabled={!personalComplete} />
           </>
         ) : null}
 
@@ -391,28 +472,50 @@ export function RegisterScreen() {
 
             <Card style={styles.fieldCard}>
               <Pressable onPress={() => openPicker('state')} style={styles.selectRow}>
-                <Text style={styles.label}>State</Text>
-                <Text style={styles.selectStrong}>{stateName || 'Select state'}</Text>
+                <Text style={styles.label}>State / UT *</Text>
+                <Text style={[styles.selectStrong, !stateName && styles.selectPlaceholder]}>
+                  {stateName || 'Select state'}
+                </Text>
                 <Text style={styles.chev}>›</Text>
               </Pressable>
             </Card>
             <Card style={styles.fieldCard}>
-              <Pressable onPress={() => openPicker('district')} style={styles.selectRow}>
-                <Text style={styles.label}>District</Text>
-                <Text style={styles.selectStrong}>{districtName || 'Select district'}</Text>
+              <Pressable
+                onPress={() => stateName && openPicker('district')}
+                style={[styles.selectRow, !stateName && styles.selectRowMuted]}
+              >
+                <Text style={styles.label}>District *</Text>
+                <Text
+                  style={[
+                    styles.selectStrong,
+                    (!districtName || !stateName) && styles.selectPlaceholder,
+                  ]}
+                >
+                  {!stateName ? 'Select state first' : districtName || 'Select district'}
+                </Text>
                 <Text style={styles.chev}>›</Text>
               </Pressable>
             </Card>
             <Card style={styles.fieldCard}>
-              <Pressable onPress={() => openPicker('block')} style={styles.selectRow}>
-                <Text style={styles.label}>Block / Taluka</Text>
-                <Text style={styles.selectStrong}>{blockName || 'Select block'}</Text>
+              <Pressable
+                onPress={() => districtName && openPicker('block')}
+                style={[styles.selectRow, !districtName && styles.selectRowMuted]}
+              >
+                <Text style={styles.label}>Block / Taluka *</Text>
+                <Text
+                  style={[
+                    styles.selectStrong,
+                    (!blockName || !districtName) && styles.selectPlaceholder,
+                  ]}
+                >
+                  {!districtName ? 'Select district first' : blockName || 'Select block'}
+                </Text>
                 <Text style={styles.chev}>›</Text>
               </Pressable>
             </Card>
 
             <Card style={styles.fieldCard}>
-              <Text style={styles.label}>Village / Ward (editable)</Text>
+              <Text style={styles.label}>Village / Ward — type your place name *</Text>
               <TextInput
                 value={villageName}
                 onChangeText={setVillageName}
@@ -438,15 +541,7 @@ export function RegisterScreen() {
             <Button
               title="NEXT →"
               onPress={nextFromLocation}
-              disabled={
-                districts.length === 0 ||
-                !stateName ||
-                !districtName ||
-                blocks.length === 0 ||
-                !blockName ||
-                !villageName.trim() ||
-                pincode.replace(/\D/g, '').length !== 6
-              }
+              disabled={!locationComplete}
             />
           </>
         ) : null}
@@ -478,12 +573,18 @@ export function RegisterScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Date of birth</Text>
             <DateTimePicker
-              value={dob}
+              value={
+                !dob
+                  ? new Date(2000, 0, 1)
+                  : isAtLeast18YearsOld(dob)
+                    ? dob
+                    : getLatestAllowedDob()
+              }
               mode="date"
               display="spinner"
               themeVariant="dark"
               onChange={onIosDobChange}
-              maximumDate={new Date()}
+              maximumDate={getLatestAllowedDob()}
               minimumDate={new Date(1920, 0, 1)}
             />
             <Button title="Done" onPress={() => setShowDob(false)} />
@@ -568,6 +669,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.white,
   },
+  selectPlaceholder: {
+    color: Colors.textMuted,
+    fontFamily: FontFamily.body,
+  },
+  selectRowMuted: {
+    opacity: 0.65,
+  },
   dateHint: {
     fontFamily: FontFamily.body,
     fontSize: 12,
@@ -638,6 +746,13 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body,
     fontSize: 13,
     marginBottom: Spacing.md,
+    lineHeight: 18,
+  },
+  fieldError: {
+    color: Colors.danger,
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    marginTop: Spacing.sm,
     lineHeight: 18,
   },
   modalSearch: {

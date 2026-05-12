@@ -13,46 +13,46 @@
  *
  * Bind the Node server on **0.0.0.0** and allow **TCP 4000** through the OS firewall for LAN devices.
  */
-import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+// import Constants from 'expo-constants';
 
-function hostFromExpoPackagerUri(): string | null {
-  const uri =
-    Constants.expoConfig?.hostUri ??
-    (
-      Constants.manifest &&
-      typeof Constants.manifest === 'object' &&
-      'debuggerHost' in Constants.manifest &&
-      typeof (Constants.manifest as { debuggerHost?: unknown }).debuggerHost === 'string'
-        ? (Constants.manifest as { debuggerHost: string }).debuggerHost
-        : undefined
-    );
-  if (!uri || typeof uri !== 'string') return null;
-  const host = uri.split(':')[0];
-  if (!host || host === 'localhost') return null;
-  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return host;
-  return null;
-}
+// function hostFromExpoPackagerUri(): string | null {
+//   const uri =
+//     Constants.expoConfig?.hostUri ??
+//     (
+//       Constants.manifest &&
+//       typeof Constants.manifest === 'object' &&
+//       'debuggerHost' in Constants.manifest &&
+//       typeof (Constants.manifest as { debuggerHost?: unknown }).debuggerHost === 'string'
+//         ? (Constants.manifest as { debuggerHost: string }).debuggerHost
+//         : undefined
+//     );
+//   if (!uri || typeof uri !== 'string') return null;
+//   const host = uri.split(':')[0];
+//   if (!host || host === 'localhost') return null;
+//   if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return host;
+//   return null;
+// }
 
-function defaultBase(): string {
-  if (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_BASE_URL) {
-    return process.env.EXPO_PUBLIC_API_BASE_URL;
-  }
+// function defaultBase(): string {
+//   if (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_API_BASE_URL) {
+//     return process.env.EXPO_PUBLIC_API_BASE_URL;
+//   }
 
-  const dev = typeof __DEV__ !== 'undefined' && __DEV__;
+//   const dev = typeof __DEV__ !== 'undefined' && __DEV__;
 
-  if (Platform.OS === 'web') {
-    return 'http://localhost:4000/api';
-  }
+//   if (Platform.OS === 'web') {
+//     return 'http://localhost:4000/api';
+//   }
 
-  if (dev) {
-    const lanHost = hostFromExpoPackagerUri();
-    if (lanHost) return `http://${lanHost}:4000/api`;
-    if (Platform.OS === 'android') return 'http://10.0.2.2:4000/api';
-  }
+//   if (dev) {
+//     const lanHost = hostFromExpoPackagerUri();
+//     if (lanHost) return `http://${lanHost}:4000/api`;
+//     if (Platform.OS === 'android') return 'http://10.0.2.2:4000/api';
+//   }
 
-  return 'http://localhost:4000/api';
-}
+//   return 'http://localhost:4000/api';
+// }
+export const API_BASE_URL = "https://iro-server-latest-1.onrender.com/api";
 
-export const API_BASE_URL = defaultBase().replace(/\/$/, '');
+// export const API_BASE_URL = defaultBase().replace(/\/$/, '');
 export const SOCKET_URL = API_BASE_URL.replace(/\/api\/?$/, '');
