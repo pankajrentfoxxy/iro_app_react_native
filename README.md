@@ -10,14 +10,18 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npm install
    ```
 
-2. (Optional) Run the in-memory dummy auth API for OTP / login testing:
+2. Run **iro-server** (the real API) — from the **`iro/server`** workspace in separate terminal:
 
    ```bash
-   npm run api:dummy
+   cd path/to/iro/server
+   npm install
+   cp .env.example .env    # Postgres + Redis credentials; OTP is logged when NODE_ENV is development or SMS worker consumes queue
+   npm run db:generate && npm run dev
    ```
 
-   OTP codes are printed in that terminal. For Android emulator, set `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:4000/api` in a `.env` file (see `src/config/api.config.ts`).
+   Listen on **`http://YOUR_PC_IP:4000`**; routes are under **`/api`** (same as Expo `API_BASE_URL`).
 
+   In development, OTP is written to **iro-server logs** (`authService`). Run **BullMQ workers** if you enqueue SMS (`npm run worker` in `iro/server`).
 3. Start the app
 
    ```bash
@@ -48,42 +52,13 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction/). For a map of `app/` vs `src/`, URLs, and navigation flow, see **[PROJECT_STRUCTURE.md](./PROJECT_STRUCTURE.md)**.
 
-## Physical phone + dummy API (same WiFi)
+## Same Wi‑Fi + real API (**iro-server**, port **4000**)
 
-1. On your PC, find your **LAN IPv4** (same WiFi as the phone). Example on Windows:
+`src/config/api.config.ts` derives the REST host from **`Constants.expoConfig.hostUri`** when you use **Expo Go / dev LAN**, so phones on your Wi‑Fi often **auto-use your PC’s IP** for `http://<host>:4000/api`. If that fails (multiple NICs, VPN, etc.), set **`EXPO_PUBLIC_API_BASE_URL`** in `.env` (see **`.env.example`**). Restart Expo after editing env.
 
-   ```bash
-   ipconfig
-   ```
-
-   Use the address that looks like `192.168.x.x` (often “Wireless LAN adapter Wi‑Fi” → IPv4 Address).
-
-2. In the project root, create **`.env`** (same folder as `package.json`):
-
-   ```env
-   EXPO_PUBLIC_API_BASE_URL=http://192.168.x.x:4000/api
-   ```
-
-   Replace `192.168.x.x` with your PC’s IP. **Restart Expo** after changing `.env`.
-
-3. **Windows:** allow Node through the firewall for **private networks**, or allow inbound **TCP 4000** when prompted.
-
-4. Open **two terminals** in the project folder:
-
-   **Terminal A — API**
-
-   ```bash
-   npm run api:dummy
-   ```
-
-   **Terminal B — Expo**
-
-   ```bash
-   npx expo start
-   ```
-
-   Scan the QR code with **Expo Go** (or use a dev build). The app will call `http://YOUR_PC_IP:4000/api`; OTP lines appear in Terminal A.
-
+1. **Windows firewall:** allow inbound **TCP 4000** (or allow **Node** on private networks).
+2. **iro-server:** must listen on **0.0.0.0** (default for `server.listen(PORT)` on Node so LAN works).
+3. **Physical device + tunnel:** `npx expo start --tunnel` does **not** route phone traffic to your LAN API; use **LAN** mode with same Wi‑Fi or set a **publicly reachable** API URL in `.env`.
 ## Get a fresh project
 
 When you're ready, run:

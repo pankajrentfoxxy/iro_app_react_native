@@ -19,6 +19,7 @@ import { useAppSelector } from '@/src/store';
 import { Colors, Gradients } from '@/src/theme/colors';
 import { FontFamily, FontSize } from '@/src/theme/typography';
 import { Radius, Spacing } from '@/src/theme/spacing';
+import { SurveyFormModal } from '@/src/components/survey/SurveyFormModal';
 
 function initials(name: string) {
   const p = name.trim().split(/\s+/).filter(Boolean);
@@ -63,6 +64,7 @@ export function VolunteerHome() {
 
   const progress = Math.min(1, network / 100);
   const remainder = Math.max(0, 100 - network);
+  const [surveyOpen, setSurveyOpen] = useState(false);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -113,7 +115,7 @@ export function VolunteerHome() {
             <Text style={styles.actionIcon}>📤</Text>
             <Text style={styles.actionLbl}>Share</Text>
           </Pressable>
-          <Pressable style={styles.action}>
+          <Pressable style={styles.action} onPress={() => setSurveyOpen(true)}>
             <Text style={styles.actionIcon}>📋</Text>
             <Text style={styles.actionLbl}>Survey</Text>
           </Pressable>
@@ -169,6 +171,8 @@ export function VolunteerHome() {
           <Button title="SHARE →" onPress={() => nav.push('/network')} style={{ marginTop: Spacing.md }} />
         </View>
       </ScrollView>
+
+      <SurveyFormModal visible={surveyOpen} onClose={() => setSurveyOpen(false)} />
     </View>
   );
 }

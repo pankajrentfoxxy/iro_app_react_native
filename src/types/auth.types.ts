@@ -1,11 +1,8 @@
-import type { UserProfile } from '@/src/types/user.types';
-
-export interface AuthMeResponse {
-  user: UserProfile;
-}
-
-export interface RegisterPayload {
-  name: string;
+/**
+ * Local registration wizard fields — sent to POST /auth/register with registerToken + phone.
+ */
+export interface RegisterWizardDraft {
+  fullName: string;
   dob: string;
   gender: string;
   phone: string;

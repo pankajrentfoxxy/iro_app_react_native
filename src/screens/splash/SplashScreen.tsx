@@ -13,11 +13,16 @@ import { Colors } from '@/src/theme/colors';
 import { FontFamily, FontSize } from '@/src/theme/typography';
 import { Spacing } from '@/src/theme/spacing';
 import { fetchMe } from '@/src/api/auth.api';
+import { iroUserToProfile } from '@/src/lib/iroUser';
+import type { UserProfile } from '@/src/types/user.types';
+import { useAppDispatch } from '@/src/store';
+import { logout } from '@/src/store/auth.slice';
 import { storage } from '@/src/utils/storage';
 
 const MIN_MS = 2500;
 
 export function SplashScreen() {
+  const dispatch = useAppDispatch();
   const scale = useSharedValue(0.5);
   const opacity = useSharedValue(0);
   const ring = useSharedValue(0.3);
@@ -65,12 +70,26 @@ export function SplashScreen() {
       }
 
       try {
-        await fetchMe();
+        const cachedUser = await storage.getString(storage.keys.user);
+        let phone = '';
+        if (cachedUser) {
+          try {
+            phone = (JSON.parse(cachedUser) as UserProfile).phone ?? '';
+          } catch {
+            /* ignore */
+          }
+        }
+
+        const apiUser = await fetchMe();
+        const merged = iroUserToProfile(apiUser, phone);
+        await storage.set(storage.keys.user, JSON.stringify(merged));
+
         const elapsed = Date.now() - start;
         const wait = Math.max(0, MIN_MS - elapsed);
         setTimeout(goMain, wait);
       } catch {
         await storage.clearAuth();
+        dispatch(logout());
         const elapsed = Date.now() - start;
         const wait = Math.max(0, MIN_MS - elapsed);
         setTimeout(goWelcome, wait);
@@ -80,7 +99,7 @@ export function SplashScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dispatch]);
 
   return (
     <View style={styles.root}>

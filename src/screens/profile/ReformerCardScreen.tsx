@@ -1,15 +1,43 @@
 import { LinearGradient } from 'expo-linear-gradient';
+import { useMemo } from 'react';
 import { nav } from '@/src/navigation/nav';
 import { Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import QRCode from 'react-native-qrcode-svg';
 import { Button } from '@/src/components/ui/Button';
 import { useAppSelector } from '@/src/store';
+import type { UserProfile } from '@/src/types/user.types';
 import { Colors, Gradients } from '@/src/theme/colors';
 import { FontFamily, FontSize } from '@/src/theme/typography';
 import { Radius, Spacing } from '@/src/theme/spacing';
 
 const JOIN_BASE = 'https://iro.in/join?ref=';
+
+function roleBadgeLabel(user: UserProfile | null | undefined): string {
+  const apiName = user?.roleName?.trim();
+  if (apiName) return apiName.toUpperCase();
+  const r = user?.role ?? 'reformer';
+  return r.replace(/_/g, ' ').toUpperCase();
+}
+
+function memberSinceLabel(joinedAt?: string | null): string {
+  if (!joinedAt?.trim()) return 'Reformer since —';
+  const d = new Date(joinedAt);
+  if (Number.isNaN(d.getTime())) return 'Reformer since —';
+  const month = d.toLocaleString(undefined, { month: 'short' });
+  const year = d.getFullYear();
+  return `Reformer since ${month} ${year}`;
+}
+
+function locationMeta(u: UserProfile | null | undefined): string {
+  if (!u) return 'India';
+  const d = (u.district ?? '').trim();
+  const s = (u.state ?? '').trim();
+  if (d && s) return `${d}, ${s}`;
+  if (s) return s;
+  if (d) return d;
+  return 'India';
+}
 
 export function ReformerCardScreen() {
   const insets = useSafeAreaInsets();
@@ -17,6 +45,9 @@ export function ReformerCardScreen() {
   const name = user?.name ?? 'Reformer';
   const id = user?.reformerId ?? 'IRO-DEMO';
   const link = `${JOIN_BASE}${encodeURIComponent(id)}`;
+
+  const badgeText = useMemo(() => roleBadgeLabel(user ?? null), [user]);
+  const joinedText = useMemo(() => memberSinceLabel(user?.joinedAt), [user?.joinedAt]);
 
   const share = async () => {
     try {
@@ -37,7 +68,7 @@ export function ReformerCardScreen() {
             <Text style={styles.logo}>🔥</Text>
             <Text style={styles.org}>INDIAN REPUBLIC ORG</Text>
           </View>
-          <Text style={styles.badge}>REFORMER</Text>
+          <Text style={styles.badge}>{badgeText}</Text>
           <View style={styles.avatarRing}>
             <View style={styles.avatar}>
               <Text style={styles.avatarInitial}>{name.trim().slice(0, 1).toUpperCase()}</Text>
@@ -45,8 +76,8 @@ export function ReformerCardScreen() {
           </View>
           <Text style={styles.name}>{name}</Text>
           <Text style={styles.ref}>{id}</Text>
-          <Text style={styles.meta}>{user?.state ?? 'India'}</Text>
-          <Text style={styles.joined}>Reformer since 2025</Text>
+          <Text style={styles.meta}>{locationMeta(user)}</Text>
+          <Text style={styles.joined}>{joinedText}</Text>
           <View style={styles.rowBottom}>
             <View style={{ flex: 1 }} />
             <View style={styles.qr}>

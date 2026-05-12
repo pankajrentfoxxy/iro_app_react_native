@@ -2,6 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEYS = {
   jwt: 'jwt_token',
+  refreshToken: 'refresh_token',
+  /** Short-lived token from OTP verify when `needsRegistration` is true. */
+  registerToken: 'register_token_pending',
   user: 'current_user',
 } as const;
 
@@ -21,6 +24,6 @@ export const storage = {
   },
 
   async clearAuth(): Promise<void> {
-    await AsyncStorage.multiRemove([KEYS.jwt, KEYS.user]);
+    await AsyncStorage.multiRemove([KEYS.jwt, KEYS.refreshToken, KEYS.user]);
   },
 };

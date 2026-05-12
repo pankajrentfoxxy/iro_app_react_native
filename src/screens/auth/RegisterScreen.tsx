@@ -1,6 +1,23 @@
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { registerUser } from '@/src/api/auth.api';
+import { Button } from '@/src/components/ui/Button';
+import { Card } from '@/src/components/ui/Card';
+import { ProgressDots } from '@/src/components/ui/ProgressDots';
+import { messageFromUnknownError } from '@/src/lib/apiError';
+import { iroUserToProfile } from '@/src/lib/iroUser';
+import { nav } from '@/src/navigation/nav';
+import { useAppDispatch, useAppSelector } from '@/src/store';
+import { setCredentials } from '@/src/store/auth.slice';
+import { Colors } from '@/src/theme/colors';
+import { Radius, Spacing } from '@/src/theme/spacing';
+import { FontFamily, FontSize } from '@/src/theme/typography';
+import type { RegisterWizardDraft } from '@/src/types/auth.types';
+import type { UserProfile } from '@/src/types/user.types';
+import { storage } from '@/src/utils/storage';
+import type { DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { createElement, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -14,20 +31,12 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
-import { registerUser } from '@/src/api/auth.api';
-import { nav } from '@/src/navigation/nav';
-import { Button } from '@/src/components/ui/Button';
-import { Card } from '@/src/components/ui/Card';
-import { ProgressDots } from '@/src/components/ui/ProgressDots';
-import { setCredentials, setUser } from '@/src/store/auth.slice';
-import { useAppDispatch, useAppSelector } from '@/src/store';
-import { storage } from '@/src/utils/storage';
-import { Colors } from '@/src/theme/colors';
-import { FontFamily, FontSize } from '@/src/theme/typography';
-import { Radius, Spacing } from '@/src/theme/spacing';
-import type { RegisterPayload } from '@/src/types/auth.types';
-import type { UserProfile } from '@/src/types/user.types';
+
+import {
+  getBlocksForStateAndDistrict,
+  getDistrictsForState,
+  getIndianStates,
+} from '@/src/lib/locationData';
 
 const OCCUPATIONS = ['Student', 'Farmer', 'Business', 'Service/Job', 'Professional', 'Other'] as const;
 const EDUCATION = [
@@ -38,31 +47,6 @@ const EDUCATION = [
   'Post Graduate',
   'PhD',
 ] as const;
-
-const LOCATION_TREE: Record<string, Record<string, Record<string, string[]>>> = {
-  'Uttar Pradesh': {
-    Lucknow: {
-      'Gomti Nagar': ['Vijay Khand', 'Vishesh Khand'],
-      Alambagh: ['Alamnagar', 'Mandi Parishad'],
-    },
-    Varanasi: {
-      Dashashwamedh: ['Godaulia', 'Sonapura'],
-      Sigra: ['Mahmoorganj', 'Sunderpur'],
-    },
-  },
-  Delhi: {
-    'New Delhi': {
-      Connaught: ['Block A', 'Block B'],
-      KarolBagh: ['East End', 'West End'],
-    },
-  },
-  Maharashtra: {
-    Mumbai: {
-      Andheri: ['West', 'East'],
-      Dadar: ['East', 'West'],
-    },
-  },
-};
 
 type WizardStep = 0 | 1 | 2;
 
@@ -82,40 +66,73 @@ export function RegisterScreen() {
 
   const [step, setStep] = useState<WizardStep>(0);
   const [name, setName] = useState(reduxUser?.name ?? '');
-  const [dob, setDob] = useState(new Date(1995, 0, 1));
+  const [dob, setDob] = useState(new Date());
   const [showDob, setShowDob] = useState(false);
   const [gender, setGender] = useState<'Male' | 'Female' | 'Other'>('Male');
   const [occupation, setOccupation] = useState<string>(OCCUPATIONS[0]);
   const [education, setEducation] = useState<string>(EDUCATION[2]);
 
-  const states = useMemo(() => Object.keys(LOCATION_TREE), []);
-  const [stateName, setStateName] = useState(states[0] ?? '');
-  const districts = useMemo(
-    () => (stateName ? Object.keys(LOCATION_TREE[stateName] ?? {}) : []),
-    [stateName]
+  const states = useMemo(() => getIndianStates(), []);
+  const [stateName, setStateName] = useState(() => states[0] ?? '');
+
+  const districts = useMemo(() => (stateName ? getDistrictsForState(stateName) : []), [stateName]);
+  const [districtName, setDistrictName] = useState('');
+
+  const blocks = useMemo(
+    () => (stateName && districtName ? getBlocksForStateAndDistrict(stateName, districtName) : []),
+    [districtName, stateName]
   );
-  const [districtName, setDistrictName] = useState(districts[0] ?? '');
-  const blocks = useMemo(() => {
-    if (!stateName || !districtName) return [] as string[];
-    return Object.keys(LOCATION_TREE[stateName]?.[districtName] ?? {});
-  }, [districtName, stateName]);
-  const [blockName, setBlockName] = useState(blocks[0] ?? '');
-  const villages = useMemo(() => {
-    if (!stateName || !districtName || !blockName) return [] as string[];
-    return LOCATION_TREE[stateName]?.[districtName]?.[blockName] ?? [];
-  }, [blockName, districtName, stateName]);
-  const [villageName, setVillageName] = useState(villages[0] ?? '');
+  const [blockName, setBlockName] = useState('');
+  const [villageName, setVillageName] = useState('');
+
+  useEffect(() => {
+    const d0 = districts[0] ?? '';
+    setDistrictName((prev) => (prev && districts.includes(prev) ? prev : d0));
+  }, [districts]);
+
+  useEffect(() => {
+    const b0 = blocks[0] ?? '';
+    setBlockName((prev) => (prev && blocks.includes(prev) ? prev : b0));
+  }, [blocks]);
+
   const [pincode, setPincode] = useState('');
 
   const [referralCode, setReferralCode] = useState('');
   const [picker, setPicker] = useState<
-    null | 'occupation' | 'education' | 'state' | 'district' | 'block' | 'village'
+    null | 'occupation' | 'education' | 'state' | 'district' | 'block'
   >(null);
+  const [pickerQuery, setPickerQuery] = useState('');
+  useEffect(() => {
+    setPickerQuery('');
+  }, [picker]);
   const [celebrate, setCelebrate] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const openPicker = (p: NonNullable<typeof picker>) => {
     setPicker(p);
+  };
+
+  const openDobPicker = () => {
+    if (Platform.OS === 'android') {
+      DateTimePickerAndroid.open({
+        value: dob,
+        mode: 'date',
+        maximumDate: new Date(),
+        minimumDate: new Date(1920, 0, 1),
+        onChange: (event: DateTimePickerEvent, date?: Date) => {
+          if (event.type === 'set' && date) setDob(date);
+        },
+      });
+      return;
+    }
+    if (Platform.OS === 'web') {
+      return;
+    }
+    setShowDob(true);
+  };
+
+  const onIosDobChange = (_event: DateTimePickerEvent, date?: Date) => {
+    if (date) setDob(date);
   };
 
   const progressStep = step === 0 ? 3 : step === 1 ? 4 : 5;
@@ -126,16 +143,34 @@ export function RegisterScreen() {
   };
 
   const nextFromLocation = () => {
-    if (!stateName || !districtName || !blockName || !villageName || pincode.replace(/\D/g, '').length !== 6) {
+    if (
+      !stateName ||
+      !districtName ||
+      !blockName ||
+      !villageName.trim() ||
+      pincode.replace(/\D/g, '').length !== 6
+    ) {
       return;
     }
     setStep(2);
   };
 
   const submitRegister = async () => {
-    setLoading(true);
-    const payload: RegisterPayload = {
-      name: name.trim(),
+    const registerTok = await storage.getString(storage.keys.registerToken);
+    if (!phone.trim()) {
+      Alert.alert('Registration', 'Phone number missing. Start again from login.');
+      return;
+    }
+    if (!registerTok) {
+      Alert.alert(
+        'Registration',
+        'Session expired. Go back and request a new OTP to continue registration.'
+      );
+      return;
+    }
+
+    const draft: RegisterWizardDraft = {
+      fullName: name.trim(),
       dob: formatDate(dob),
       gender,
       phone,
@@ -148,54 +183,48 @@ export function RegisterScreen() {
       education,
       referralCode: referralCode.trim() || undefined,
     };
+
+    setLoading(true);
     try {
-      const data = await registerUser(payload);
-      const token = (data as { token?: string }).token ?? (await storage.getString(storage.keys.jwt)) ?? '';
-      const raw = (data as { user?: Record<string, unknown> }).user;
-      let user: UserProfile | null = reduxUser;
-      if (raw && token) {
-        user = {
-          id: String(raw.id ?? user?.id ?? 'iro'),
-          name: String(raw.name ?? payload.name),
-          phone,
-          reformerId: String(raw.reformerId ?? raw.reformer_id ?? `IRO-${phone.replace(/\D/g, '').slice(-6)}`),
-          role: (raw.role as UserProfile['role']) ?? user?.role ?? 'reformer',
-          state: stateName,
-          district: districtName,
-          networkCount: Number(raw.networkCount ?? 47),
-          directReferrals: Number(raw.directReferrals ?? 12),
-          nationalRank: Number(raw.nationalRank ?? 247),
-          dayStreak: Number(raw.dayStreak ?? 12),
-          surveyScore: Number(raw.surveyScore ?? 4.7),
-        };
-        await storage.set(storage.keys.user, JSON.stringify(user));
-        dispatch(setCredentials({ token, user }));
-      } else if (user && token) {
-        const merged = {
-          ...user,
-          name: payload.name,
-          state: stateName,
-          district: districtName,
-          reformerId: user.reformerId || `IRO-${phone.replace(/\D/g, '').slice(-6)}`,
-        };
-        await storage.set(storage.keys.user, JSON.stringify(merged));
-        dispatch(setUser(merged));
-      }
+      const referral = draft.referralCode?.trim() || null;
+      const res = await registerUser({
+        registerToken: registerTok,
+        phone: draft.phone,
+        fullName: draft.fullName,
+        referralCode: referral && referral.length >= 4 ? referral : null,
+        dob: draft.dob,
+        gender: draft.gender,
+        village: draft.village.trim(),
+        pincode: draft.pincode,
+        occupation: draft.occupation,
+        education: draft.education,
+        stateName: draft.state,
+        districtName: draft.district,
+        blockName: draft.block,
+      });
+
+      await storage.delete(storage.keys.registerToken);
+      await storage.set(storage.keys.jwt, res.accessToken);
+      await storage.set(storage.keys.refreshToken, res.refreshToken);
+
+      const base = iroUserToProfile(res.user, draft.phone);
+      const user: UserProfile = {
+        ...base,
+        name: draft.fullName,
+        state: draft.state,
+        district: draft.district,
+      };
+      await storage.set(storage.keys.user, JSON.stringify(user));
+      dispatch(setCredentials({ token: res.accessToken, user }));
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setCelebrate(true);
       setTimeout(() => {
         nav.replace('/home');
       }, 2800);
-    } catch {
+    } catch (e) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(
-        'Registration',
-        'Could not reach the server. Your profile is saved locally — you can continue in the app.'
-      );
-      setCelebrate(true);
-      setTimeout(() => {
-        nav.replace('/home');
-      }, 2200);
+      Alert.alert('Registration failed', messageFromUnknownError(e));
     } finally {
       setLoading(false);
     }
@@ -207,14 +236,12 @@ export function RegisterScreen() {
       : picker === 'education'
         ? 'Education'
         : picker === 'state'
-          ? 'State'
+          ? 'State / UT'
           : picker === 'district'
             ? 'District'
             : picker === 'block'
               ? 'Block / Taluka'
-              : picker === 'village'
-                ? 'Village / Ward'
-                : '';
+              : '';
 
   const pickerData =
     picker === 'occupation'
@@ -227,35 +254,22 @@ export function RegisterScreen() {
             ? districts
             : picker === 'block'
               ? blocks
-              : picker === 'village'
-                ? villages
-                : [];
+              : [];
+
+  const searchablePicker =
+    picker === 'state' || picker === 'district' || picker === 'block';
+  const q = pickerQuery.trim().toLowerCase();
+  const pickerDataFiltered =
+    searchablePicker && q.length > 0
+      ? pickerData.filter((item) => item.toLowerCase().includes(q))
+      : pickerData;
 
   const onPick = (value: string) => {
     if (picker === 'occupation') setOccupation(value);
     if (picker === 'education') setEducation(value);
-    if (picker === 'state') {
-      setStateName(value);
-      const d0 = Object.keys(LOCATION_TREE[value] ?? {})[0] ?? '';
-      setDistrictName(d0);
-      const b0 = d0 ? Object.keys(LOCATION_TREE[value]?.[d0] ?? {})[0] ?? '' : '';
-      setBlockName(b0);
-      const v0 = b0 ? LOCATION_TREE[value]?.[d0]?.[b0]?.[0] ?? '' : '';
-      setVillageName(v0);
-    }
-    if (picker === 'district') {
-      setDistrictName(value);
-      const b0 = Object.keys(LOCATION_TREE[stateName]?.[value] ?? {})[0] ?? '';
-      setBlockName(b0);
-      const v0 = b0 ? LOCATION_TREE[stateName]?.[value]?.[b0]?.[0] ?? '' : '';
-      setVillageName(v0);
-    }
-    if (picker === 'block') {
-      setBlockName(value);
-      const v0 = LOCATION_TREE[stateName]?.[districtName]?.[value]?.[0] ?? '';
-      setVillageName(v0);
-    }
-    if (picker === 'village') setVillageName(value);
+    if (picker === 'state') setStateName(value);
+    if (picker === 'district') setDistrictName(value);
+    if (picker === 'block') setBlockName(value);
     setPicker(null);
   };
 
@@ -294,21 +308,39 @@ export function RegisterScreen() {
 
             <Card style={styles.fieldCard}>
               <Text style={styles.label}>Date of Birth *</Text>
-              <Pressable onPress={() => setShowDob(true)} style={styles.dateRow}>
-                <Text style={styles.dateTxt}>{formatDate(dob)}</Text>
-              </Pressable>
-              {showDob ? (
-                <DateTimePicker
-                  value={dob}
-                  mode="date"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_, d) => {
-                    setShowDob(Platform.OS === 'ios');
-                    if (d) setDob(d);
-                  }}
-                  maximumDate={new Date()}
-                />
-              ) : null}
+              {Platform.OS === 'web' ? (
+                <View style={styles.dateRow}>
+                  {createElement('input', {
+                    type: 'date',
+                    value: formatDate(dob),
+                    max: formatDate(new Date()),
+                    min: formatDate(new Date(1920, 0, 1)),
+                    onChange: (e: { target: { value: string } }) => {
+                      const v = e.target.value;
+                      if (!v) return;
+                      const [y, m, d] = v.split('-').map((x) => parseInt(x, 10));
+                      if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
+                        setDob(new Date(y, m - 1, d));
+                      }
+                    },
+                    style: {
+                      width: '100%',
+                      marginTop: 4,
+                      padding: '10px 12px',
+                      borderRadius: 8,
+                      fontSize: 16,
+                      color: '#ffffff',
+                      backgroundColor: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      boxSizing: 'border-box',
+                    },
+                  } as Record<string, unknown>)}
+                </View>
+              ) : (
+                <Pressable onPress={openDobPicker} style={styles.dateRow}>
+                  <Text style={styles.dateTxt}>{formatDate(dob)}</Text>
+                </Pressable>
+              )}
             </Card>
 
             <Card style={styles.fieldCard}>
@@ -349,7 +381,13 @@ export function RegisterScreen() {
         {step === 1 ? (
           <>
             <Text style={styles.headerTitle}>Where are you from?</Text>
-            <Text style={styles.headerSub}>This connects you with your local IRO network</Text>
+            <Text style={styles.headerSub}>Districts &amp; blocks from official block listings; village is free text.</Text>
+
+            {districts.length === 0 && !!stateName ? (
+              <Text style={styles.warn}>
+                No district data for “{stateName}”. Update `INDIA_STATE_LABEL_TO_LGD_CODE` if this state should be mapped.
+              </Text>
+            ) : null}
 
             <Card style={styles.fieldCard}>
               <Pressable onPress={() => openPicker('state')} style={styles.selectRow}>
@@ -372,12 +410,16 @@ export function RegisterScreen() {
                 <Text style={styles.chev}>›</Text>
               </Pressable>
             </Card>
+
             <Card style={styles.fieldCard}>
-              <Pressable onPress={() => openPicker('village')} style={styles.selectRow}>
-                <Text style={styles.label}>Village / Ward</Text>
-                <Text style={styles.selectStrong}>{villageName || 'Select village'}</Text>
-                <Text style={styles.chev}>›</Text>
-              </Pressable>
+              <Text style={styles.label}>Village / Ward (editable)</Text>
+              <TextInput
+                value={villageName}
+                onChangeText={setVillageName}
+                placeholder="Type your village or ward"
+                placeholderTextColor={Colors.textMuted}
+                style={styles.input}
+              />
             </Card>
 
             <Card style={styles.fieldCard}>
@@ -397,10 +439,12 @@ export function RegisterScreen() {
               title="NEXT →"
               onPress={nextFromLocation}
               disabled={
+                districts.length === 0 ||
                 !stateName ||
                 !districtName ||
+                blocks.length === 0 ||
                 !blockName ||
-                !villageName ||
+                !villageName.trim() ||
                 pincode.replace(/\D/g, '').length !== 6
               }
             />
@@ -429,13 +473,43 @@ export function RegisterScreen() {
         ) : null}
       </ScrollView>
 
+      <Modal visible={showDob} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Date of birth</Text>
+            <DateTimePicker
+              value={dob}
+              mode="date"
+              display="spinner"
+              themeVariant="dark"
+              onChange={onIosDobChange}
+              maximumDate={new Date()}
+              minimumDate={new Date(1920, 0, 1)}
+            />
+            <Button title="Done" onPress={() => setShowDob(false)} />
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={picker !== null} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{pickerTitle}</Text>
+            {searchablePicker ? (
+              <TextInput
+                value={pickerQuery}
+                onChangeText={setPickerQuery}
+                placeholder="Search..."
+                placeholderTextColor={Colors.textMuted}
+                style={styles.modalSearch}
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
+            ) : null}
             <FlatList
-              data={pickerData}
+              data={pickerDataFiltered}
               keyExtractor={(item) => item}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
                 <Pressable onPress={() => onPick(item)} style={styles.modalRow}>
                   <Text style={styles.modalRowTxt}>{item}</Text>
@@ -493,6 +567,12 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.bodySemi,
     fontSize: 16,
     color: Colors.white,
+  },
+  dateHint: {
+    fontFamily: FontFamily.body,
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginTop: 4,
   },
   chips: {
     flexDirection: 'row',
@@ -552,6 +632,25 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontFamily: FontFamily.body,
     fontSize: FontSize.body,
+  },
+  warn: {
+    color: Colors.danger,
+    fontFamily: FontFamily.body,
+    fontSize: 13,
+    marginBottom: Spacing.md,
+    lineHeight: 18,
+  },
+  modalSearch: {
+    fontFamily: FontFamily.body,
+    fontSize: 16,
+    color: Colors.white,
+    backgroundColor: Colors.navy,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.sm,
   },
   modalOverlay: {
     flex: 1,

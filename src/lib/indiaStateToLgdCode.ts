@@ -1,0 +1,45 @@
+/**
+ * Maps labels used in {@link stateCities} / Register UI to `stateCode` values inside `blockCity.js`
+ * (LGD-style numerical codes used in that dataset — not NSC 2001 numbering).
+ *
+ * Derived by sampling districts per code in blockCity — see scripts/sample-district-per-state-code patterns.
+ */
+export const INDIA_STATE_LABEL_TO_LGD_CODE: Record<string, string> = {
+  'Andaman and Nicobar Islands': '31',
+  'Andhra Pradesh': '1',
+  'Arunachal Pradesh': '32',
+  Assam: '2',
+  Bihar: '3',
+  Chhattisgarh: '23',
+  Chandigarh: '33',
+  'Dadra and Nagar Haveli': '34',
+  Delhi: '35',
+  Goa: '40',
+  Gujarat: '4',
+  Haryana: '5',
+  'Himachal Pradesh': '6',
+  'Himachal Praddesh': '6',
+  Jharkhand: '24',
+  Karnataka: '8',
+  Kerala: '9',
+  'Madhya Pradesh': '10',
+  Maharashtra: '11',
+  Manipur: '12',
+  Meghalaya: '13',
+  Mizoram: '38',
+  Nagaland: '14',
+  Odisha: '15',
+  Punjab: '16',
+  Rajasthan: '17',
+  Sikkim: '22',
+  'Tamil Nadu': '18',
+  Telangana: '26',
+  Tripura: '19',
+  'Uttar Pradesh': '20',
+  Uttarakhand: '25',
+  'West Bengal': '21',
+  'Jammu and Kashmir': '7',
+  Lakshadweep: '37',
+  Puducherry: '39',
+  'Dadra and Nagar Haveli and Daman and Diu': '36',
+};

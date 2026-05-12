@@ -5,44 +5,24 @@ import { OtpInput } from 'react-native-otp-entry';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { verifyOtp } from '@/src/api/auth.api';
+import { requestOtp, verifyOtp } from '@/src/api/auth.api';
 import { nav } from '@/src/navigation/nav';
-import { setCredentials } from '@/src/store/auth.slice';
+import { setCredentials, logout } from '@/src/store/auth.slice';
 import { useAppDispatch } from '@/src/store';
+import { iroUserToProfile } from '@/src/lib/iroUser';
+import { messageFromUnknownError } from '@/src/lib/apiError';
 import { storage } from '@/src/utils/storage';
 import { Button } from '@/src/components/ui/Button';
 import { ProgressDots } from '@/src/components/ui/ProgressDots';
 import { Colors } from '@/src/theme/colors';
 import { FontFamily, FontSize } from '@/src/theme/typography';
 import { Radius, Spacing } from '@/src/theme/spacing';
-import type { UserProfile } from '@/src/types/user.types';
 
 function maskPhone(phone: string) {
   const d = phone.replace(/\D/g, '');
   const last10 = d.slice(-10);
   if (last10.length !== 10) return phone;
   return `+91 ${last10.slice(0, 5)} ${last10.slice(5)}`;
-}
-
-function normalizeUser(raw: Record<string, unknown>, phone: string): UserProfile {
-  const id = String(raw.id ?? raw._id ?? 'local');
-  const name = String(raw.name ?? 'Reformer');
-  const reformerId = String(raw.reformerId ?? raw.reformer_id ?? `IRO-${phone.slice(-6)}`);
-  const role = (raw.role as UserProfile['role']) ?? 'reformer';
-  return {
-    id,
-    name,
-    phone,
-    reformerId,
-    role,
-    state: raw.state as string | undefined,
-    district: raw.district as string | undefined,
-    networkCount: Number(raw.networkCount ?? raw.network_count ?? 47),
-    directReferrals: Number(raw.directReferrals ?? raw.direct_referrals ?? 12),
-    nationalRank: Number(raw.nationalRank ?? raw.national_rank ?? 247),
-    dayStreak: Number(raw.dayStreak ?? raw.day_streak ?? 12),
-    surveyScore: Number(raw.surveyScore ?? raw.survey_score ?? 4.7),
-  };
 }
 
 export function OTPScreen() {
@@ -62,19 +42,17 @@ export function OTPScreen() {
     return () => clearInterval(t);
   }, [seconds]);
 
-  const persistAndRoute = useCallback(
-    async (token: string, userRaw: Record<string, unknown>) => {
-      const user = normalizeUser(userRaw, phoneStr);
-      await storage.set(storage.keys.jwt, token);
+  const persistSession = useCallback(
+    async (accessToken: string, refreshToken: string, apiUser: Parameters<typeof iroUserToProfile>[0]) => {
+      await storage.delete(storage.keys.registerToken);
+      await storage.set(storage.keys.jwt, accessToken);
+      await storage.set(storage.keys.refreshToken, refreshToken);
+      const user = iroUserToProfile(apiUser, phoneStr);
       await storage.set(storage.keys.user, JSON.stringify(user));
-      dispatch(setCredentials({ token, user }));
-      if (mode === 'login') {
-        nav.replace('/home');
-      } else {
-        nav.replaceParams('/auth/register', { phone: phoneStr });
-      }
+      dispatch(setCredentials({ token: accessToken, user }));
+      nav.replace('/home');
     },
-    [dispatch, mode, phoneStr]
+    [dispatch, phoneStr]
   );
 
   const verify = useCallback(
@@ -83,23 +61,38 @@ export function OTPScreen() {
       setSubmitting(true);
       try {
         const data = await verifyOtp(phoneStr, code);
-        const token = data.token;
-        const userObj = data.user as Record<string, unknown> | undefined;
-        if (!token || !userObj) {
-          throw new Error('Invalid response from server');
+        if (data.needsRegistration) {
+          await storage.set(storage.keys.registerToken, data.registerToken);
+          await storage.delete(storage.keys.jwt);
+          await storage.delete(storage.keys.refreshToken);
+          dispatch(logout());
+          nav.replaceParams('/auth/register', { phone: phoneStr });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          return;
         }
-        await persistAndRoute(token, userObj);
+        const { accessToken, refreshToken, user } = data;
+        await persistSession(accessToken, refreshToken, user);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch (e) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        const msg = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'Verification failed';
-        Alert.alert('OTP failed', msg);
+        Alert.alert('OTP failed', messageFromUnknownError(e));
       } finally {
         setSubmitting(false);
       }
     },
-    [persistAndRoute, phoneStr]
+    [persistSession, phoneStr]
   );
+
+  const onResend = useCallback(async () => {
+    if (!phoneStr) return;
+    setSeconds(45);
+    try {
+      await requestOtp(phoneStr);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert('Could not resend OTP', messageFromUnknownError(e));
+    }
+  }, [phoneStr]);
 
   const lastAuto = useRef('');
   useEffect(() => {
@@ -148,7 +141,7 @@ export function OTPScreen() {
               Resend in 0:{seconds.toString().padStart(2, '0')}
             </>
           ) : (
-            <Text onPress={() => setSeconds(45)} style={styles.resend}>
+            <Text onPress={() => void onResend()} style={styles.resend}>
               Resend OTP
             </Text>
           )}

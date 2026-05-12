@@ -1,4 +1,5 @@
 import { requestOtp } from '@/src/api/auth.api';
+import { messageFromUnknownError } from '@/src/lib/apiError';
 import { Button } from '@/src/components/ui/Button';
 import { ProgressDots } from '@/src/components/ui/ProgressDots';
 import { nav } from '@/src/navigation/nav';
@@ -45,8 +46,7 @@ export function PhoneScreen() {
       await requestOtp(phoneE164);
       nav.pushParams('/auth/otp', { phone: phoneE164, mode });
     } catch (e: unknown) {
-      const msg = e && typeof e === 'object' && 'message' in e ? String((e as Error).message) : 'Could not send OTP';
-      Alert.alert('OTP request failed', msg);
+      Alert.alert('OTP request failed', messageFromUnknownError(e));
       setError('Unable to send OTP. Check connection and try again.');
     } finally {
       setLoading(false);
