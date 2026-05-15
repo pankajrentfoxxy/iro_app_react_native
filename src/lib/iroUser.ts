@@ -82,5 +82,6 @@ export function iroUserToProfile(user: IroPublicUser, phone: string): UserProfil
     surveysSubmitted: Number(stats.surveysSubmitted ?? 0),
     status: user.status,
     joinedAt: user.createdAt,
+    boothLocationId: user.jurisdiction?.boothId ?? undefined,
   };
 }

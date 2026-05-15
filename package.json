@@ -8,7 +8,11 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "preview:android": "eas build -p android --profile preview",
+    "production:android": "eas build -p android --profile production",
+    "preview:ios": "eas build -p ios --profile preview",
+    "production:ios": "eas build -p ios --profile production"
   },
   "dependencies": {
     "@expo-google-fonts/baloo-2": "^0.4.2",

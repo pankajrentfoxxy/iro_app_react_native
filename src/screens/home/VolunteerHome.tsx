@@ -119,7 +119,7 @@ export function VolunteerHome() {
             <Text style={styles.actionIcon}>📋</Text>
             <Text style={styles.actionLbl}>Survey</Text>
           </Pressable>
-          <Pressable style={styles.action}>
+          <Pressable style={styles.action} onPress={() => nav.push('/(tabs)/booth')}>
             <Text style={styles.actionIcon}>✅</Text>
             <Text style={styles.actionLbl}>Tasks</Text>
           </Pressable>

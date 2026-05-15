@@ -37,4 +37,6 @@ export interface UserProfile {
   surveysSubmitted?: number;
   status?: string;
   joinedAt?: string;
+  /** Server `jurisdiction.boothId` — hierarchy BOOTH location id when assigned */
+  boothLocationId?: string | null;
 }
