@@ -77,7 +77,11 @@ export function RegisterScreen() {
   const insets = useSafeAreaInsets();
   const dispatch = useAppDispatch();
   const reduxUser = useAppSelector((s) => s.auth.user);
-  const { phone: phoneParam } = useLocalSearchParams<{ phone?: string }>();
+  const { phone: phoneParam, ref: refParam, invite: inviteParam } = useLocalSearchParams<{
+    phone?: string;
+    ref?: string | string[];
+    invite?: string | string[];
+  }>();
   const phone = phoneParam ?? reduxUser?.phone ?? '';
 
   const [step, setStep] = useState<WizardStep>(0);
@@ -111,6 +115,16 @@ export function RegisterScreen() {
   useEffect(() => {
     setPickerQuery('');
   }, [picker]);
+
+  useEffect(() => {
+    const rawInvite = Array.isArray(inviteParam) ? inviteParam[0] : inviteParam;
+    const rawRef = Array.isArray(refParam) ? refParam[0] : refParam;
+    const fromInvite = rawInvite?.trim();
+    const fromRef = rawRef?.trim();
+    if (fromInvite) setReferralCode(fromInvite.toUpperCase());
+    else if (fromRef) setReferralCode(fromRef.toUpperCase());
+  }, [inviteParam, refParam]);
+
   const [celebrate, setCelebrate] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -550,11 +564,15 @@ export function RegisterScreen() {
           <>
             <Text style={styles.headerTitle}>Almost there!</Text>
             <Card style={styles.fieldCard}>
-              <Text style={styles.label}>Referral Code (optional)</Text>
+              <Text style={styles.label}>Invite or referral code (optional)</Text>
+              <Text style={styles.hint}>
+                Use a role invite (e.g. L7-ABC123) from a leader, or a legacy reformer code (IRO-…).
+                Your role is assigned by the server from the code — not chosen here.
+              </Text>
               <TextInput
                 value={referralCode}
                 onChangeText={(t) => setReferralCode(t.toUpperCase())}
-                placeholder="IRO-XXXXX"
+                placeholder="L7-XXXXXX or IRO-XXXXX"
                 placeholderTextColor={Colors.textMuted}
                 autoCapitalize="characters"
                 style={styles.input}
@@ -654,6 +672,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textSecondary,
     marginBottom: Spacing.xs,
+  },
+  hint: {
+    fontFamily: FontFamily.body,
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginBottom: Spacing.sm,
+    lineHeight: 17,
   },
   input: {
     fontFamily: FontFamily.body,

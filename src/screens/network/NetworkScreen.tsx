@@ -1,4 +1,5 @@
 import { fetchReferralTree, type ReferralTreeNode } from '@/src/api/auth.api';
+import { getReferralStats } from '@/src/api/referral.api';
 import { Button } from '@/src/components/ui/Button';
 import { ProgressBar } from '@/src/components/ui/ProgressBar';
 import { SectionHeader } from '@/src/components/ui/SectionHeader';
@@ -10,7 +11,7 @@ import type { UserProfile, UserRole } from '@/src/types/user.types';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -38,9 +39,9 @@ function roleFallbackFromProfile(u: UserProfile | null): string {
     president: 'L1',
     national_exec: 'L2',
     state_leader: 'L3',
-    district_leader: 'L4',
-    block_leader: 'L5',
-    booth_worker: 'L6',
+    district_leader: 'L5',
+    block_leader: 'L6',
+    booth_worker: 'L7',
     reformer: 'L7',
     volunteer: 'L8',
   };
@@ -144,6 +145,7 @@ function collectVisibleEdges(node: TreeNodeType, expanded: Record<string, boolea
 
 export default function NetworkScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const params = useLocalSearchParams<{ source?: string | string[] }>();
   const sourceParam = typeof params.source === 'string' ? params.source : params.source?.[0];
   const user = useAppSelector((s) => s.auth.user);
@@ -153,7 +155,8 @@ export default function NetworkScreen() {
   const [treeRoot, setTreeRoot] = useState<TreeNodeType | null>(null);
   const [treeLoading, setTreeLoading] = useState(true);
   const [treeError, setTreeError] = useState<string | null>(null);
-  const networkCount = user?.networkCount ?? 0;
+  const [impact, setImpact] = useState<{ directCount: number; networkCount: number } | null>(null);
+  const networkCount = impact?.networkCount ?? user?.networkCount ?? 0;
   const progress = Math.min(1, networkCount / 100);
 
   const fallbackTree = useCallback((): TreeNodeType => {
@@ -168,8 +171,12 @@ export default function NetworkScreen() {
     setTreeLoading(true);
     setTreeError(null);
     try {
-      const { tree } = await fetchReferralTree();
+      const [{ tree }, stats] = await Promise.all([
+        fetchReferralTree(),
+        getReferralStats().catch(() => null),
+      ]);
       setTreeRoot(tree);
+      if (stats) setImpact(stats);
     } catch {
       setTreeError('Could not load your referral tree.');
       setTreeRoot(fallbackTree());
@@ -221,6 +228,10 @@ export default function NetworkScreen() {
         </Pressable>
       </View>
 
+      <View style={{ paddingHorizontal: Spacing.lg, paddingBottom: Spacing.sm }}>
+        <Button title="Role invite codes" variant="outline" onPress={() => router.push('/referral-invites')} />
+      </View>
+
       {tab === 'tree' ? (
         <ScrollView
           contentContainerStyle={{ padding: Spacing.lg, paddingBottom: insets.bottom + 40 }}
@@ -242,7 +253,8 @@ export default function NetworkScreen() {
 
           <SectionHeader title="Your impact" />
           <Text style={styles.body}>
-            You&apos;ve brought <Text style={styles.em}>{user?.directReferrals ?? 0}</Text> Reformers directly.
+            You&apos;ve brought <Text style={styles.em}>{impact?.directCount ?? user?.directReferrals ?? 0}</Text>{' '}
+            Reformers directly.
           </Text>
           <Text style={styles.body}>
             Your extended network: <Text style={styles.em}>{networkCount}</Text> total

@@ -24,11 +24,13 @@ import { logout, setCredentials } from '@/src/store/auth.slice';
 import type { UserProfile } from '@/src/types/user.types';
 import { Colors } from '@/src/theme/colors';
 import { storage } from '@/src/utils/storage';
+import { useOfflineSync } from '@/src/hooks/useOfflineSync';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 function AuthGate({ children }: { children: ReactNode }) {
   const dispatch = useAppDispatch();
+  useOfflineSync();
   const token = useAppSelector((s) => s.auth.token);
   const [authReady, setAuthReady] = useState(false);
   const segments = useSegments();
@@ -62,7 +64,7 @@ function AuthGate({ children }: { children: ReactNode }) {
     if (!authReady || !navState?.key) return;
 
     const seg0 = segments[0];
-    const inProtected = seg0 === '(tabs)' || seg0 === 'reformer-card';
+    const inProtected = seg0 === '(tabs)' || seg0 === 'reformer-card' || seg0 === 'referral-invites';
     const inWelcome = seg0 === 'welcome';
     const inAuth = seg0 === 'auth';
     const inSplash = pathname === '/' || pathname === '/index' || seg0 === 'index';
@@ -119,6 +121,7 @@ export default function RootLayout() {
               <Stack.Screen name="auth" />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="reformer-card" options={{ presentation: 'modal' }} />
+              <Stack.Screen name="referral-invites" />
             </Stack>
           </AuthGate>
         </SafeAreaProvider>

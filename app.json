@@ -1,5 +1,6 @@
 {
   "expo": {
+    "scheme": "iro",
     "extra": {
       "eas": {
         "projectId": "fdd27c9a-1cef-4786-a673-4e1e2f2a6cd6"

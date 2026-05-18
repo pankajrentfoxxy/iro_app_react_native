@@ -1,7 +1,14 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { nav } from '@/src/navigation/nav';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
@@ -20,6 +27,11 @@ import { Colors, Gradients } from '@/src/theme/colors';
 import { FontFamily, FontSize } from '@/src/theme/typography';
 import { Radius, Spacing } from '@/src/theme/spacing';
 import { SurveyFormModal } from '@/src/components/survey/SurveyFormModal';
+import { fetchTasks } from '@/src/api/tasks.api';
+import { getLiveCount, getMyStats } from '@/src/api/users.api';
+import { SOCKET_URL } from '@/src/config/api.config';
+import { getPersona, getPersonaMessage } from '@/src/utils/personaEngine';
+import { io } from 'socket.io-client';
 
 function initials(name: string) {
   const p = name.trim().split(/\s+/).filter(Boolean);
@@ -51,20 +63,78 @@ export function VolunteerHome() {
   const user = useAppSelector((s) => s.auth.user);
   const name = user?.name ?? 'Reformer';
   const state = user?.state ?? 'India';
-  const network = user?.networkCount ?? 47;
-  const live = useCountUp(842391, 1600);
+
+  const [dashLoading, setDashLoading] = useState(true);
+  const [stats, setStats] = useState<Awaited<ReturnType<typeof getMyStats>> | null>(null);
+  const [liveCount, setLiveCount] = useState(0);
+  const [taskPreview, setTaskPreview] = useState<{ title: string; dueDate?: string | null } | null>(
+    null
+  );
+
+  const networkCount = stats?.user.networkCount ?? user?.networkCount ?? 0;
+  const directCount = stats?.user.directCount ?? user?.directReferrals ?? 0;
 
   const ring = useSharedValue(0);
   useEffect(() => {
     ring.value = withTiming(1, { duration: 1200, easing: Easing.out(Easing.cubic) });
   }, [ring]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let socket: ReturnType<typeof io> | undefined;
+
+    (async () => {
+      try {
+        const [s, lc, tasksRes] = await Promise.all([
+          getMyStats(),
+          getLiveCount(),
+          fetchTasks({ assigned_to: 'me', due_today: true }).catch(() => ({ tasks: [] })),
+        ]);
+        if (cancelled) return;
+        setStats(s);
+        setLiveCount(lc.count);
+        const t = tasksRes.tasks[0];
+        setTaskPreview(t ? { title: t.title, dueDate: t.dueDate } : null);
+      } catch {
+        try {
+          const lc = await getLiveCount();
+          if (!cancelled) setLiveCount(lc.count);
+        } catch {
+          /* noop */
+        }
+      } finally {
+        if (!cancelled) setDashLoading(false);
+      }
+    })();
+
+    try {
+      socket = io(SOCKET_URL, { transports: ['websocket'] });
+      socket.on('total_reformers', (payload: { count?: number }) => {
+        if (typeof payload?.count === 'number') setLiveCount(payload.count);
+      });
+    } catch {
+      /* noop */
+    }
+
+    return () => {
+      cancelled = true;
+      socket?.disconnect();
+    };
+  }, []);
+
   const livePulse = useAnimatedStyle(() => ({
     opacity: 0.35 + 0.5 * ring.value,
   }));
 
-  const progress = Math.min(1, network / 100);
-  const remainder = Math.max(0, 100 - network);
+  const progress = Math.min(1, networkCount / 100);
+  const remainder = Math.max(0, 100 - networkCount);
   const [surveyOpen, setSurveyOpen] = useState(false);
+
+  const activityScore = stats?.xp.activityScore ?? 0;
+  const persona = getPersona(directCount, networkCount, activityScore);
+  const personaMessage = getPersonaMessage(persona, stats?.user.name ?? name);
+
+  const live = useCountUp(liveCount, 1600);
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
@@ -78,6 +148,9 @@ export function VolunteerHome() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: insets.bottom + 96 }} showsVerticalScrollIndicator={false}>
+        {dashLoading ? (
+          <ActivityIndicator color={Colors.saffron} style={{ marginBottom: Spacing.md }} />
+        ) : null}
         <LinearGradient colors={[...Gradients.hero]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.welcome}>
           <View style={styles.welcomeRow}>
             <View style={styles.avatar}>
@@ -91,13 +164,20 @@ export function VolunteerHome() {
               </View>
             </View>
           </View>
-          <Text style={styles.metric}>{network}</Text>
+          <Text style={styles.metric}>{networkCount}</Text>
           <Text style={styles.metricLbl}>Reformers in your network</Text>
           <ProgressBar progress={progress} />
           <Text style={styles.milestone}>
             {remainder} more → 🏅 Bronze Badge
           </Text>
         </LinearGradient>
+
+        {stats ? (
+          <View style={styles.personaCard}>
+            <Badge label={persona.replace('_', ' ')} tone="info" />
+            <Text style={styles.personaBody}>{personaMessage}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.liveCard}>
           <View style={styles.liveRow}>
@@ -106,7 +186,7 @@ export function VolunteerHome() {
           </View>
           <Text style={styles.liveNum}>{live.toLocaleString('en-IN')}</Text>
           <Text style={styles.liveCap}>Total IRO Reformers</Text>
-          <Text style={styles.liveGrowth}>+1,247 joined today ↑</Text>
+          <Text style={styles.liveGrowth}>Updates live — socket pushes latest signup totals</Text>
         </View>
 
         <SectionHeader title="Quick actions" />
@@ -131,21 +211,29 @@ export function VolunteerHome() {
 
         <SectionHeader title="My stats" />
         <View style={styles.grid}>
-          <MetricCard value={String(user?.directReferrals ?? 12)} label="Direct Referrals" />
+          <MetricCard value={String(directCount)} label="Direct Referrals" />
           <MetricCard
-            value={`#${user?.nationalRank ?? 247}`}
-            label="National Rank"
+            value={
+              stats ?
+                String(Math.round(stats.xp.leadershipScore))
+              : `#${user?.nationalRank ?? '—'}`
+            }
+            label={stats ? 'Leadership score' : 'National Rank'}
             valueColor={Colors.info}
           />
         </View>
         <View style={styles.grid}>
           <MetricCard
-            value={`🔥 ${user?.dayStreak ?? 12}`}
+            value={`🔥 ${stats?.xp.streak ?? user?.dayStreak ?? '—'}`}
             label="Day Streak"
             valueColor={Colors.warning}
           />
           <MetricCard
-            value={String(user?.surveyScore ?? 4.7)}
+            value={
+              stats ?
+                stats.xp.surveyScore.toFixed(1)
+              : String(user?.surveyScore ?? '—')
+            }
             label="Survey Score"
             valueColor={Colors.success}
           />
@@ -153,9 +241,13 @@ export function VolunteerHome() {
 
         <View style={styles.taskCard}>
           <Text style={styles.taskTag}>📋 TODAY&apos;S TASK</Text>
-          <Text style={styles.taskTitle}>Share today&apos;s IRO message in your group</Text>
-          <Text style={styles.taskDue}>Due: 6:00 PM</Text>
-          <Button title="DO NOW →" variant="outline" onPress={() => nav.push('/network')} style={styles.taskBtn} />
+          <Text style={styles.taskTitle}>
+            {taskPreview?.title ?? 'Pull to Tasks tab — complete field work with GPS + proof'}
+          </Text>
+          <Text style={styles.taskDue}>
+            {taskPreview?.dueDate ? `Due: ${taskPreview.dueDate}` : 'Due: when your leader assigns one'}
+          </Text>
+          <Button title="DO NOW →" variant="outline" onPress={() => nav.push('/(tabs)/booth')} style={styles.taskBtn} />
         </View>
 
         <View style={styles.announce}>
@@ -266,6 +358,21 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.body,
     fontSize: 12,
     color: Colors.textMuted,
+  },
+  personaCard: {
+    marginTop: Spacing.md,
+    backgroundColor: Colors.navyLight,
+    borderRadius: Radius.md,
+    padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  personaBody: {
+    marginTop: Spacing.sm,
+    fontFamily: FontFamily.body,
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 20,
   },
   liveCard: {
     marginTop: Spacing.md,
